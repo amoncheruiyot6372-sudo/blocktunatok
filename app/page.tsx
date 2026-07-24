@@ -1,57 +1,34 @@
 'use client';
 
-import { useSmartChartsApi } from '@/hooks/use-smartcharts-api';
-import { useSmartChartChartData } from '@/hooks/use-smartchart-chart-data';
-import { useAccumulatorTrading } from '../hooks/use-accumulator-trading';
-import { useDerivWSContext } from '@/components/custom/deriv-ws-provider';
-import { useLogoSrc } from '@/components/custom/logo-src-provider';
-import { AccumulatorView } from '../components/accumulator-view';
+import { useEffect, useState } from 'react';
+import { LiveDigits } from '../components/live-digits';
+import { normalizeAppConfig, type DigitsAppConfig } from '../lib/app-config';
 
-export default function AccumulatorPage() {
-  const logoSrc = useLogoSrc();
-  const { ws, isConnected, isExhausted, auth } = useDerivWSContext();
-  const { authState, accounts, activeAccount, login, signUp, logout, switchAccount } = auth;
+/**
+ * Deployed app. Reads the no-code config injected at deploy time
+ * (public/app-config.json). When present, the configurable control styles/order
+ * are applied; when absent, the standard Digits app renders unchanged. Either
+ * way the app is fully functional (real trading + login).
+ */
+export default function DigitsPage() {
+  const [config, setConfig] = useState<DigitsAppConfig | null | undefined>(undefined);
 
-  const trading = useAccumulatorTrading({ ws, isConnected, isExhausted, isAuthenticated: !!auth.wsUrl, onAuthWSFailed: logout });
+  useEffect(() => {
+    let cancelled = false;
+    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+    fetch(`${base}/app-config.json`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!cancelled) setConfig(data ? normalizeAppConfig(data) : null);
+      })
+      .catch(() => {
+        if (!cancelled) setConfig(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const { chartData } = useSmartChartChartData(trading.ws, trading.isConnected, trading.symbols);
-  const { getQuotes, subscribeQuotes, unsubscribeQuotes } = useSmartChartsApi(trading.ws);
-
-  return (
-    <AccumulatorView
-      authState={authState}
-      accounts={accounts}
-      activeAccount={activeAccount}
-      onLogin={login}
-      onSignUp={signUp}
-      onLogout={logout}
-      onSwitchAccount={switchAccount}
-      logoSrc={logoSrc}
-      isConnected={trading.isConnected}
-      isLoading={trading.isLoading}
-      error={trading.error}
-      activeSymbol={trading.activeSymbol}
-      selectSymbol={trading.selectSymbol}
-      growthRate={trading.growthRate}
-      setGrowthRate={trading.setGrowthRate}
-      growthRateOptions={trading.growthRateOptions}
-      stake={trading.stake}
-      setStake={trading.setStake}
-      takeProfit={trading.takeProfit}
-      setTakeProfit={trading.setTakeProfit}
-      proposal={trading.proposal}
-      buyContract={trading.buyContract}
-      isBuying={trading.isBuying}
-      buyResult={trading.buyResult}
-      buyError={trading.buyError}
-      clearBuyResult={trading.clearBuyResult}
-      openPositions={trading.openPositions}
-      sellContract={trading.sellContract}
-      sellingId={trading.sellingId}
-      chartData={chartData}
-      getQuotes={getQuotes}
-      subscribeQuotes={subscribeQuotes}
-      unsubscribeQuotes={unsubscribeQuotes}
-    />
-  );
+  if (config === undefined) return <div className="min-h-dvh bg-background" />;
+  return <LiveDigits appConfig={config ?? undefined} />;
 }
